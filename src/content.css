@@ -1,0 +1,18 @@
+/* Styles for injected Transcribe button and transcript area */
+.parakeet-wa-transcribe-btn {
+  margin-top: 4px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.parakeet-wa-transcribe-loading {
+  vertical-align: middle;
+  width: 24px;
+  height: 24px;
+}
+.parakeet-wa-transcribe-result {
+  margin-top: 6px;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

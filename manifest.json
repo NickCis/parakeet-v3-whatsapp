@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_chrome_extension_name__",
+  "version": "0.1.0",
+  "description": "__MSG_chrome_extension_description__",
+  "default_locale": "en_US",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "content_scripts": [
+    {
+      "css": [
+        "content.css"
+      ],
+      "js": [
+        "constants.js",
+        "content.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "offscreen",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval' ; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "loading.gif",
+        "page-context.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ]
+    }
+  ],
+  "sandbox": {
+    "pages": [
+      "sandbox.html"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "parakeet-v3-whatsapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && cp src/background.js src/constants.js src/content.js src/offscreen.html src/sandbox.html src/page-context.js manifest.json src/content.css dist/ && cp -r _locales dist/ && cp icons/loading.gif icons/icon16.png icons/icon48.png icons/icon128.png dist/ && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs dist/",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.24.1",
+    "parakeet.js": "^1.2.1"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1",
+    "vite": "^6.0.0"
+  }
+}

@@ -2,20 +2,23 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Use patched ort.bundle.min.mjs so preload() returns URL instead of creating a blob (avoids CSP).
+      'onnxruntime-web': resolve(__dirname, 'patched/ort.bundle.min.mjs'),
+    },
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
       input: {
         offscreen: resolve(__dirname, 'src/offscreen.js'),
-        sandbox: resolve(__dirname, 'src/sandbox.js'),
       },
       output: {
-        entryFileNames: (chunk) =>
-          chunk.name === 'offscreen' ? 'offscreen.js' : chunk.name === 'sandbox' ? 'sandbox.js' : '[name].js',
-        chunkFileNames: (chunkInfo) =>
-          chunkInfo.name === 'offscreen' ? 'offscreen-[hash].js' : 'sandbox-[hash].js',
-        assetFileNames: 'sandbox-[hash][extname]',
+        entryFileNames: 'offscreen.js',
+        chunkFileNames: 'offscreen-[hash].js',
+        assetFileNames: 'offscreen-[hash][extname]',
       },
     },
     minify: false,

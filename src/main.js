@@ -1,10 +1,13 @@
+// TODO:
+const LoadingGifURL = undefined;
+
 /**
  * Runs in the page context (same window as web.whatsapp.com).
- * Injected via chrome.scripting.executeScript with world: 'MAIN'.
+ * Injected via script tag by the content script. Reads loading GIF URL from script src query param.
  * MutationObserver for audio-play spans, finds data-id parent, adds Transcribe button.
  */
 (function () {
-  const PageContextLogPrefix = '[Parakeet-WA page-context]';
+  const PageContextLogPrefix = '[Parakeet-WA main]';
   if (window.__PARAKEET_PAGE_SCRIPT_LOADED) return;
   window.__PARAKEET_PAGE_SCRIPT_LOADED = true;
 
@@ -132,25 +135,26 @@
     URL.revokeObjectURL(url);
   }
 
+  /**
+    https://github.com/pedroslopez/whatsapp-web.js/blob/main/src/util/Injected/Store.js
+  */
   function injectStore() {
     if (typeof window.require === 'undefined') {
-      setTimeout(injectStore, 500);
+      setTimeout(injectStore, 100);
       return;
     }
+
     try {
       window.Store = Object.assign({}, window.require('WAWebCollections'));
       window.Store.DownloadManager = window.require(
         'WAWebDownloadManager',
       ).downloadManager;
     } catch (e) {
-      setTimeout(injectStore, 500);
+      setTimeout(injectStore, 100);
     }
   }
-  injectStore();
 
-  function getLoadingImgSrc() {
-    return window.__PARAKEET_LOADING_URL || '';
-  }
+  injectStore();
 
   function attachButtonToContainer(container) {
     if (container.hasAttribute(DataAttrTranscribeAttached)) return;
@@ -167,8 +171,8 @@
     imgLoading.width = 24;
     imgLoading.height = 24;
     imgLoading.alt = '';
-    const loadingSrc = getLoadingImgSrc();
-    if (loadingSrc) imgLoading.src = loadingSrc;
+
+    if (LoadingGifURL) imgLoading.src = LoadingGifURL;
 
     const btn = document.createElement('button');
     btn.className = 'parakeet-wa-transcribe-btn';

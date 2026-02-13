@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && cp src/background.js src/constants.js src/content.js src/offscreen.html src/sandbox.html src/page-context.js manifest.json src/content.css dist/ && cp -r _locales dist/ && cp icons/loading.gif icons/icon16.png icons/icon48.png icons/icon128.png dist/ && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs dist/",
+    "build": "vite build && cp src/background.js src/constants.js src/content.js src/main.js src/offscreen.html manifest.json src/content.css dist/ && cp -r _locales dist/ && cp icons/loading.gif icons/icon16.png icons/icon48.png icons/icon128.png dist/ && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs dist/",
     "dev": "vite build --watch"
   },
   "dependencies": {

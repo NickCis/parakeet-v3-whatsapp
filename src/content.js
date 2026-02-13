@@ -1,9 +1,3 @@
-/**
- * Content script: injects page-context script and bridges transcription.
- * Listens for parakeet-request-transcribe (requestId, arrayBuffer), sends to
- * background, then dispatches parakeet-transcript-result (requestId, transcript/error).
- */
-
 const ContentLogPrefix = '[Parakeet-WA content]';
 console.log(ContentLogPrefix, 'script loaded');
 
@@ -15,17 +9,11 @@ function getMessage(key) {
   }
 }
 
-function injectPageScript() {
-  chrome.runtime.sendMessage({ type: 'injectPageScript' }, function (reply) {
-    if (reply && reply.ok) {
-      console.log(
-        ContentLogPrefix,
-        'page-context script injected via scripting API',
-      );
-    } else if (reply && reply.error) {
-      console.error(ContentLogPrefix, 'injectPageScript failed:', reply.error);
-    }
-  });
+function injectScript(name) {
+  const script = document.createElement('script');
+  script.src = chrome.runtime.getURL(name);
+  script.type = 'module';
+  document.head.appendChild(script);
 }
 
 document.addEventListener(EventRequestTranscribe, async function (ev) {
@@ -46,15 +34,7 @@ document.addEventListener(EventRequestTranscribe, async function (ev) {
   };
 
   try {
-    const reply = await chrome.runtime.sendMessage({
-      type: 'transcribe',
-      audioBase64,
-    });
-    console.log(
-      ContentLogPrefix,
-      'reply from background:',
-      reply ? Object.keys(reply) : reply,
-    );
+    const reply = await chrome.runtime.sendMessage({ type: 'transcribe', audioBase64 });
     if (reply && reply.error) {
       sendResult({ error: reply.error });
     } else if (reply && reply.transcript != null) {
@@ -64,23 +44,12 @@ document.addEventListener(EventRequestTranscribe, async function (ev) {
     }
   } catch (err) {
     console.error(ContentLogPrefix, 'error:', err);
-    sendResult({
-      error: (err && err.message) || getMessage('error_transcribe'),
-    });
+    sendResult({ error: (err && err.message) || getMessage('error_transcribe') });
   }
 });
 
-function main() {
-  injectPageScript();
-}
-
-if (document.body) {
-  console.log(ContentLogPrefix, 'body exists');
-  main();
-} else {
-  console.log(ContentLogPrefix, 'waiting for DOMContentLoaded');
-  document.addEventListener('DOMContentLoaded', function () {
-    console.log(ContentLogPrefix, 'DOMContentLoaded');
-    main();
-  });
+try {
+  injectScript('main.js');
+} catch (err) {
+  console.error(ContentLogPrefix, 'Failed to load main.js:', err);
 }

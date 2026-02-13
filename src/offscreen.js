@@ -1,89 +1,160 @@
 /**
- * Offscreen document: relay only. Creates sandbox iframe, forwards transcribe
- * to sandbox via postMessage and results back to service worker via port.
+ * Offscreen document: runs Parakeet (WebGPU) and decode/resample.
+ * Connects to the service worker; receives { type: 'transcribe', audioBase64 }, replies with { transcript } or { error }.
+ *
+ * We set ONNX Runtime WASM paths to the extension base URL before Parakeet runs so the jsep script/WASM
+ * are loaded from the extension (CSP allows 'self') instead of the CDN.
  */
-const Prefix = '[Parakeet-WA offscreen]';
-console.log(Prefix, 'script loaded');
+import { getParakeetModel, ParakeetModel } from 'parakeet.js';
 
-let iframe = null;
-let sandboxReady = false;
-const pendingByRequestId = {};
-let requestIdCounter = 0;
+const TARGET_SAMPLE_RATE = 16000;
 
-const port = chrome.runtime.connect({ name: 'parakeet-offscreen' });
-port.onDisconnect.addListener(() => console.log(Prefix, 'port disconnected'));
-console.log(Prefix, 'port connected');
+/** Install a fetch wrapper that logs download progress for model/assets. Call once before loading the model. */
+function installFetchProgressLogging() {
+  if (self._fetchProgressInstalled) return;
+  self._fetchProgressInstalled = true;
+  const originalFetch = self.fetch;
+  self.fetch = function (input, init) {
+    const url = typeof input === 'string' ? input : input?.url;
+    const method = (init?.method || 'GET').toUpperCase();
+    if (method !== 'GET' || !url) return originalFetch.call(this, input, init);
 
-function ensureSandbox() {
-  if (iframe) return Promise.resolve();
-  return new Promise((resolve) => {
-    iframe = document.createElement('iframe');
-    iframe.src = chrome.runtime.getURL('sandbox.html');
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
-    const onReady = (ev) => {
-      if (ev.data && ev.data.type === 'parakeet-sandbox-ready') {
-        window.removeEventListener('message', onReady);
-        sandboxReady = true;
-        console.log(Prefix, 'sandbox ready');
-        resolve();
-      }
-    };
-    window.addEventListener('message', onReady);
-    iframe.onload = () => {
-      if (sandboxReady) resolve();
-    };
+    const label = url.split('/').pop()?.split('?')[0] || url.slice(-40);
+    const isModelAsset = /\.(onnx|wasm|mjs|json|bin)$/i.test(label) || url.includes('huggingface') || url.includes('parakeet');
+
+    return originalFetch.call(this, input, init).then((response) => {
+      if (!response.body || !isModelAsset) return response;
+      const total = response.headers.get('Content-Length');
+      const totalNum = total ? parseInt(total, 10) : null;
+      let loaded = 0;
+      let lastLoggedPct = -1;
+      let lastLoggedMb = 0;
+      const start = Date.now();
+      const reader = response.body.getReader();
+      const stream = new ReadableStream({
+        start(controller) {
+          function pump() {
+            return reader.read().then(({ done, value }) => {
+              if (done) {
+                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+                console.log(`[Parakeet] Downloaded ${label}: ${formatBytes(loaded)}${totalNum ? ` (100%) in ${elapsed}s` : ` in ${elapsed}s`}`);
+                controller.close();
+                return;
+              }
+              loaded += value.length;
+              if (totalNum) {
+                const pct = Math.floor((loaded / totalNum) * 100);
+                if (pct >= lastLoggedPct + 10 || pct >= 100) {
+                  lastLoggedPct = pct;
+                  console.log(`[Parakeet] Downloading ${label}: ${formatBytes(loaded)} / ${formatBytes(totalNum)} (${Math.min(pct, 100)}%)`);
+                }
+              } else {
+                const mb = Math.floor(loaded / (1024 * 1024));
+                if (mb >= lastLoggedMb + 5) {
+                  lastLoggedMb = mb;
+                  console.log(`[Parakeet] Downloading ${label}: ${formatBytes(loaded)}…`);
+                }
+              }
+              controller.enqueue(value);
+              return pump();
+            });
+          }
+          return pump();
+        },
+      });
+      return new Response(stream, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    });
+  };
+}
+
+function formatBytes(n) {
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+/** Ensure ORT loads script/WASM from extension; must run before any Parakeet/ORT use. */
+async function ensureOrtPathsFromExtension() {
+  const ortModule = await import('onnxruntime-web');
+  const ort = ortModule.default || ortModule;
+  if (ort?.env?.wasm) {
+    ort.env.wasm.wasmPaths = chrome.runtime.getURL('');
+  }
+}
+
+function decodeAndResample(arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    const audioContext = new AudioContext();
+    audioContext.decodeAudioData(
+      arrayBuffer,
+      (decoded) => {
+        audioContext.close();
+        const duration = decoded.duration;
+        const length = Math.ceil(duration * TARGET_SAMPLE_RATE);
+        const offline = new OfflineAudioContext(1, length, TARGET_SAMPLE_RATE);
+        const src = offline.createBufferSource();
+        src.buffer = decoded;
+        src.connect(offline.destination);
+        src.start(0);
+        offline.startRendering().then((rendered) => {
+          const ch = rendered.getChannelData(0);
+          const pcm = new Float32Array(ch.length);
+          pcm.set(ch);
+          resolve(pcm);
+        }, reject);
+      },
+      reject
+    );
   });
 }
 
-window.addEventListener('message', (ev) => {
-  const d = ev.data || {};
-  if (d.type === 'parakeet-sandbox-log') {
-    const fn = d.level === 'error' ? console.error : console.log;
-    fn(Prefix, '[sandbox]', ...(d.args || []));
-    return;
-  }
-  const { type, requestId, transcript, error } = d;
-  if (type !== 'parakeet-result' || requestId == null) return;
-  const pending = pendingByRequestId[requestId];
-  if (!pending) return;
-  delete pendingByRequestId[requestId];
-  try {
-    if (error != null) {
-      pending.portSend({ error });
-    } else {
-      pending.portSend({ transcript: transcript || '' });
-    }
-  } catch (e) {
-    pending.portSend({ error: (e && e.message) || String(e) });
-  }
-});
+let model = null;
+let loadPromise = null;
+
+async function loadModel() {
+  if (model) return model;
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    console.log('[Parakeet] Preparing ORT and fetching model manifest…');
+    installFetchProgressLogging();
+    await ensureOrtPathsFromExtension();
+    const { urls, filenames } = await getParakeetModel('parakeet-tdt-0.6b-v3', {
+      backend: 'webgpu-hybrid',
+    });
+    console.log('[Parakeet] Model manifest ready, downloading model files:', Object.keys(urls || {}).join(', '));
+    model = await ParakeetModel.fromUrls({
+      ...urls,
+      filenames,
+      backend: 'webgpu-hybrid',
+    });
+    console.log('[Parakeet] Model loaded and ready.');
+    return model;
+  })();
+  return loadPromise;
+}
+
+const port = chrome.runtime.connect({ name: 'parakeet-offscreen' });
 
 port.onMessage.addListener(async (msg) => {
-  const audioBase64 = msg?.audioBase64;
-  console.log(Prefix, 'port message received', 'type=', msg?.type, 'audioBase64.length=', typeof audioBase64 === 'string' ? audioBase64.length : 'n/a');
-  if (msg.type !== 'transcribe' || !audioBase64 || typeof audioBase64 !== 'string') {
-    if (msg.type === 'transcribe' && !audioBase64) console.warn(Prefix, 'transcribe message has no audioBase64');
-    return;
+  const { type, audioBase64 } = msg || {};
+  if (type !== 'transcribe' || !audioBase64 || typeof audioBase64 !== 'string') return;
+  try {
+    const binary = atob(audioBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const arrayBuffer = bytes.buffer;
+    const pcm = await decodeAndResample(arrayBuffer);
+    const m = await loadModel();
+    const result = await m.transcribe(pcm, TARGET_SAMPLE_RATE, {
+      returnTimestamps: false,
+      enableProfiling: false,
+    });
+    port.postMessage({ transcript: result.utterance_text || '' });
+  } catch (e) {
+    port.postMessage({ error: (e && e.message) || String(e) });
   }
-  await ensureSandbox();
-  if (!iframe || !iframe.contentWindow) {
-    console.warn(Prefix, 'sandbox iframe not ready');
-    try {
-      port.postMessage({ error: 'Sandbox not ready.' });
-    } catch (_) {}
-    return;
-  }
-  const requestId = ++requestIdCounter;
-  const portSend = (payload) => {
-    try {
-      port.postMessage(payload);
-    } catch (_) {}
-  };
-  pendingByRequestId[requestId] = { portSend };
-  console.log(Prefix, 'posting to sandbox', 'requestId=', requestId, 'audioBase64.length=', audioBase64.length);
-  iframe.contentWindow.postMessage(
-    { type: 'parakeet-transcribe', requestId, audioBase64 },
-    '*'
-  );
 });

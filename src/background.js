@@ -6,24 +6,23 @@
 const PREFIX = '[Parakeet-WA background]';
 console.log(PREFIX, 'service worker loaded');
 
-const OFFSCREEN_PATH = 'offscreen.html';
-const OFFSCREEN_REASON = 'BLOBS';
-const OFFSCREEN_JUSTIFICATION = 'Decode and process WhatsApp audio for local Parakeet transcription (WebGPU).';
+const OffscreenPath = 'offscreen.html';
+const OffscreenJustification = 'Decode and process WhatsApp audio for local Parakeet transcription (WebGPU).';
 
 let offscreenPort = null;
 let pendingSendResponse = null;
 
 async function ensureOffscreenDocument() {
-  const offscreenUrl = chrome.runtime.getURL(OFFSCREEN_PATH);
+  const offscreenUrl = chrome.runtime.getURL(OffscreenPath);
   const existing = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],
     documentUrls: [offscreenUrl],
   });
   if (existing.length > 0) return;
   await chrome.offscreen.createDocument({
-    url: OFFSCREEN_PATH,
-    reasons: [OFFSCREEN_REASON],
-    justification: OFFSCREEN_JUSTIFICATION,
+    url: OffscreenPath,
+    reasons: ['BLOBS', 'WORKERS', 'LOCAL_STORAGE'],
+    justification: OffscreenJustification,
   });
 }
 

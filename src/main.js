@@ -1,12 +1,12 @@
-// TODO:
-const LoadingGifURL = undefined;
-
 /**
  * Runs in the page context (same window as web.whatsapp.com).
  * Injected via script tag by the content script. Reads loading GIF URL from script src query param.
  * MutationObserver for audio-play spans, finds data-id parent, adds Transcribe button.
  */
 (function () {
+// TODO:
+const LoadingGifURL = undefined;
+
   const PageContextLogPrefix = '[Parakeet-WA main]';
   if (window.__PARAKEET_PAGE_SCRIPT_LOADED) return;
   window.__PARAKEET_PAGE_SCRIPT_LOADED = true;

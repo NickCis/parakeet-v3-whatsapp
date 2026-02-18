@@ -5,77 +5,9 @@
  * We set ONNX Runtime WASM paths to the extension base URL before Parakeet runs so the jsep script/WASM
  * are loaded from the extension (CSP allows 'self') instead of the CDN.
  */
-import { getParakeetModel, ParakeetModel } from 'parakeet.js';
+import { fromHub } from 'parakeet.js';
 
-const TARGET_SAMPLE_RATE = 16000;
-
-/** Install a fetch wrapper that logs download progress for model/assets. Call once before loading the model. */
-function installFetchProgressLogging() {
-  if (self._fetchProgressInstalled) return;
-  self._fetchProgressInstalled = true;
-  const originalFetch = self.fetch;
-  self.fetch = function (input, init) {
-    const url = typeof input === 'string' ? input : input?.url;
-    const method = (init?.method || 'GET').toUpperCase();
-    if (method !== 'GET' || !url) return originalFetch.call(this, input, init);
-
-    const label = url.split('/').pop()?.split('?')[0] || url.slice(-40);
-    const isModelAsset = /\.(onnx|wasm|mjs|json|bin)$/i.test(label) || url.includes('huggingface') || url.includes('parakeet');
-
-    return originalFetch.call(this, input, init).then((response) => {
-      if (!response.body || !isModelAsset) return response;
-      const total = response.headers.get('Content-Length');
-      const totalNum = total ? parseInt(total, 10) : null;
-      let loaded = 0;
-      let lastLoggedPct = -1;
-      let lastLoggedMb = 0;
-      const start = Date.now();
-      const reader = response.body.getReader();
-      const stream = new ReadableStream({
-        start(controller) {
-          function pump() {
-            return reader.read().then(({ done, value }) => {
-              if (done) {
-                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-                console.log(`[Parakeet] Downloaded ${label}: ${formatBytes(loaded)}${totalNum ? ` (100%) in ${elapsed}s` : ` in ${elapsed}s`}`);
-                controller.close();
-                return;
-              }
-              loaded += value.length;
-              if (totalNum) {
-                const pct = Math.floor((loaded / totalNum) * 100);
-                if (pct >= lastLoggedPct + 10 || pct >= 100) {
-                  lastLoggedPct = pct;
-                  console.log(`[Parakeet] Downloading ${label}: ${formatBytes(loaded)} / ${formatBytes(totalNum)} (${Math.min(pct, 100)}%)`);
-                }
-              } else {
-                const mb = Math.floor(loaded / (1024 * 1024));
-                if (mb >= lastLoggedMb + 5) {
-                  lastLoggedMb = mb;
-                  console.log(`[Parakeet] Downloading ${label}: ${formatBytes(loaded)}…`);
-                }
-              }
-              controller.enqueue(value);
-              return pump();
-            });
-          }
-          return pump();
-        },
-      });
-      return new Response(stream, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
-    });
-  };
-}
-
-function formatBytes(n) {
-  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
-  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
-  return n + ' B';
-}
+const TargetSampleRate = 16000;
 
 /** Ensure ORT loads script/WASM from extension; must run before any Parakeet/ORT use. */
 async function ensureOrtPathsFromExtension() {
@@ -94,8 +26,8 @@ function decodeAndResample(arrayBuffer) {
       (decoded) => {
         audioContext.close();
         const duration = decoded.duration;
-        const length = Math.ceil(duration * TARGET_SAMPLE_RATE);
-        const offline = new OfflineAudioContext(1, length, TARGET_SAMPLE_RATE);
+        const length = Math.ceil(duration * TargetSampleRate);
+        const offline = new OfflineAudioContext(1, length, TargetSampleRate);
         const src = offline.createBufferSource();
         src.buffer = decoded;
         src.connect(offline.destination);
@@ -115,27 +47,124 @@ function decodeAndResample(arrayBuffer) {
 let model = null;
 let loadPromise = null;
 
-async function loadModel() {
+async function loadModel(modelVersion = 'parakeet-tdt-0.6b-v3', device = 'webgpu') {
   if (model) return model;
   if (loadPromise) return loadPromise;
+
   loadPromise = (async () => {
-    console.log('[Parakeet] Preparing ORT and fetching model manifest…');
-    installFetchProgressLogging();
+    console.log('[Parakeet] Preparing ORT and fetching model manifest...', modelVersion, device);
     await ensureOrtPathsFromExtension();
-    const { urls, filenames } = await getParakeetModel('parakeet-tdt-0.6b-v3', {
-      backend: 'webgpu-hybrid',
+
+    const backend = device === 'webgpu' ? 'webgpu-hybrid' : 'wasm';
+    const quantization = backend === 'wasm'
+      ? { encoderQuant: 'int8', decoderQuant: 'int8', preprocessor: 'nemo128' }
+      : { encoderQuant: 'fp32', decoderQuant: 'int8', preprocessor: 'nemo128' };
+
+    // Track which files we've already sent 'initiate' for
+    model = await fromHub(modelVersion, {
+      backend,
+      ...quantization,
+      progress: (progressData) => {
+        const { loaded, total, file } = progressData;
+        const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
+        console.log(`[Parakeet] Download progress :: file=${file} progress=${progress} loaded=${loaded} total=${total}`);
+      },
     });
-    console.log('[Parakeet] Model manifest ready, downloading model files:', Object.keys(urls || {}).join(', '));
-    model = await ParakeetModel.fromUrls({
-      ...urls,
-      filenames,
-      backend: 'webgpu-hybrid',
-    });
+
     console.log('[Parakeet] Model loaded and ready.');
     return model;
   })();
   return loadPromise;
 }
+
+/**
+ * Transcribe audio chunk using Parakeet
+ */
+async function transcribe(audio) {
+  if (!model)
+    throw new Error('Model not loaded. Call load() first.');
+
+  try {
+    const startTime = performance.now();
+
+    // Transcribe with parakeet.js
+    const result = await model.transcribe(audio, TargetSampleRate, {
+      returnTimestamps: true,  // Get word-level timestamps
+      returnConfidences: true,  // Get confidence scores
+      temperature: 1.0,  // Greedy decoding
+    });
+
+    const endTime = performance.now();
+    const latency = (endTime - startTime) / 1000;  // seconds
+    const audioDuration = audio.length / 16000;
+    const rtf = audioDuration / latency;  // Speed factor (inverse of traditional RTF)
+
+    // Convert parakeet.js word format to our sentence format
+    const sentences = groupWordsIntoSentences(result.words || []);
+
+    return {
+      text: result.utterance_text || '',
+      sentences,
+      words: result.words || [],
+      chunks: result.words || [],  // For compatibility
+      metadata: {
+        latency,
+        audioDuration,
+        rtf,
+        confidence: result.confidence_scores,
+        metrics: result.metrics,
+      },
+    };
+  } catch (error) {
+    console.error('Transcription error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Group words into sentences based on punctuation
+ *
+ * Note: This is a simplified implementation since parakeet.js provides word-level
+ * alignments but not sentence-level. The Python implementation uses model-provided
+ * sentence boundaries. We split on sentence-ending punctuation (.!?) to approximate
+ * sentence boundaries for the progressive streaming window management.
+ */
+function groupWordsIntoSentences(words) {
+  if (!words || words.length === 0) {
+    return [];
+  }
+
+  const sentences = [];
+  let currentWords = [];
+  let currentStart = words[0].start_time || 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    currentWords.push(word.text);
+
+    // Check if this word ends a sentence (only period, question mark, exclamation)
+    // Note: We explicitly ignore commas - they don't end sentences
+    const endsWithTerminalPunctuation = /[.!?]$/.test(word.text);
+
+    if (endsWithTerminalPunctuation || i === words.length - 1) {
+      // Create sentence
+      sentences.push({
+        text: currentWords.join(' ').trim(),
+        start: currentStart,
+        end: word.end_time || (word.start_time || 0),
+      });
+
+      // Start new sentence if there are more words
+      if (i < words.length - 1) {
+        currentWords = [];
+        currentStart = words[i + 1].start_time || (word.end_time || 0);
+      }
+    }
+  }
+
+  return sentences;
+}
+
 
 const port = chrome.runtime.connect({ name: 'parakeet-offscreen' });
 
@@ -148,12 +177,9 @@ port.onMessage.addListener(async (msg) => {
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     const arrayBuffer = bytes.buffer;
     const pcm = await decodeAndResample(arrayBuffer);
-    const m = await loadModel();
-    const result = await m.transcribe(pcm, TARGET_SAMPLE_RATE, {
-      returnTimestamps: false,
-      enableProfiling: false,
-    });
-    port.postMessage({ transcript: result.utterance_text || '' });
+    await loadModel();
+    const result = await transcribe(pcm);
+    port.postMessage({ transcript: result.text || '' });
   } catch (e) {
     port.postMessage({ error: (e && e.message) || String(e) });
   }

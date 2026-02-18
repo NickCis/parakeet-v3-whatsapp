@@ -4,8 +4,8 @@ import { resolve } from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      // Use patched ort.bundle.min.mjs so preload() returns URL instead of creating a blob (avoids CSP).
-      'onnxruntime-web': resolve(__dirname, 'patched/ort.bundle.min.mjs'),
+      // Force all onnxruntime-web to be the same
+      'onnxruntime-web': resolve(__dirname, 'node_modules/onnxruntime-web'),
     },
   },
   build: {

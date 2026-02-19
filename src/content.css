@@ -1,18 +1,103 @@
 /* Styles for injected Transcribe button and transcript area */
+.parakeet-wa-transcribe-container {
+  margin: 2px 0 0 0;
+  padding: 0 63px;
+}
+
 .parakeet-wa-transcribe-btn {
-  margin-top: 4px;
-  padding: 4px 10px;
-  font-size: 13px;
+  display: block;
+  font-size: 12px;
   cursor: pointer;
+  color: var(--WDS-accent);
 }
-.parakeet-wa-transcribe-loading {
-  vertical-align: middle;
-  width: 24px;
-  height: 24px;
-}
+
 .parakeet-wa-transcribe-result {
-  margin-top: 6px;
-  margin-bottom: 6px;
+  user-select: text;
+  position: relative;
+  padding-bottom: 8px;
+  padding-top: 6px;
+  padding-inline-start: var(--bubble-padding-start);
+  padding-inline-end: var(--bubble-padding-end);
+  box-sizing: border-box;
+  color: var(--message-primary);
   white-space: pre-wrap;
   word-break: break-word;
+  background-color: var(--incoming-background);
+  box-shadow: 0 1px 0.5px rgba(var(--shadow-rgb), 0.13);
+  border-radius: var(--radius-bubble);
+  font-weight: 400;
+  line-height: 1.25rem;
+  font-size: 0.875rem;
+  letter-spacing: 0.01rem;
 }
+
+.parakeet-wa-transcribe-result-svg {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+}
+
+.parakeet-wa-transcribe-result-svg-bg {
+  fill: var(--incoming-background);
+}
+
+.parakeet-wa-transcribe-result-svg-icon {
+  color: var(--audio-progress-played-outgoing);
+}
+
+@keyframes parakeet-wa-loading-animation {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes parakeet-wa-loading-circle-animation {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124px;
+  }
+
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35px;
+  }
+}
+
+.parakeet-wa-loading-container {
+  display: flex;
+  align-items: center;
+}
+
+.parakeet-wa-loading-container > * + * {
+  margin-left: 4px;
+}
+
+.parakeet-wa-loading-message {
+  color: var(--WDS-content-deemphasized);
+  font-size: 12px;
+}
+
+.parakeet-wa-loading {
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  animation-name: parakeet-wa-loading-animation;
+  animation-duration: 2s;
+}
+
+.parakeet-wa-loading-circle {
+  stroke-dasharray: 90px, 150px;
+  stroke-dashoffset: -35.7721px;
+  animation-name: parakeet-wa-loading-circle-animation;
+  animation-duration: 1.5s;
+  animation-iteration-count: infinite;
+  stroke: var(--WDS-accent);
+  animation-timing-function: ease-in-out;
+  stroke-linecap: round;
+}
+
+/* stroke: var(--WDS-accent); */

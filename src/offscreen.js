@@ -23,7 +23,7 @@ function decodeAndResample(arrayBuffer) {
     const audioContext = new AudioContext();
     audioContext.decodeAudioData(
       arrayBuffer,
-      (decoded) => {
+      decoded => {
         audioContext.close();
         const duration = decoded.duration;
         const length = Math.ceil(duration * TargetSampleRate);
@@ -32,14 +32,14 @@ function decodeAndResample(arrayBuffer) {
         src.buffer = decoded;
         src.connect(offline.destination);
         src.start(0);
-        offline.startRendering().then((rendered) => {
+        offline.startRendering().then(rendered => {
           const ch = rendered.getChannelData(0);
           const pcm = new Float32Array(ch.length);
           pcm.set(ch);
           resolve(pcm);
         }, reject);
       },
-      reject
+      reject,
     );
   });
 }
@@ -47,27 +47,45 @@ function decodeAndResample(arrayBuffer) {
 let model = null;
 let loadPromise = null;
 
-async function loadModel(modelVersion = 'parakeet-tdt-0.6b-v3', device = 'webgpu') {
+async function loadModel(
+  modelVersion = 'parakeet-tdt-0.6b-v3',
+  device = 'webgpu',
+) {
   if (model) return model;
   if (loadPromise) return loadPromise;
 
   loadPromise = (async () => {
-    console.log('[Parakeet] Preparing ORT and fetching model manifest...', modelVersion, device);
+    console.log(
+      '[Parakeet] Preparing ORT and fetching model manifest...',
+      modelVersion,
+      device,
+    );
     await ensureOrtPathsFromExtension();
 
     const backend = device === 'webgpu' ? 'webgpu-hybrid' : 'wasm';
-    const quantization = backend === 'wasm'
-      ? { encoderQuant: 'int8', decoderQuant: 'int8', preprocessor: 'nemo128' }
-      : { encoderQuant: 'fp32', decoderQuant: 'int8', preprocessor: 'nemo128' };
+    const quantization =
+      backend === 'wasm'
+        ? {
+            encoderQuant: 'int8',
+            decoderQuant: 'int8',
+            preprocessor: 'nemo128',
+          }
+        : {
+            encoderQuant: 'fp32',
+            decoderQuant: 'int8',
+            preprocessor: 'nemo128',
+          };
 
     // Track which files we've already sent 'initiate' for
     model = await fromHub(modelVersion, {
       backend,
       ...quantization,
-      progress: (progressData) => {
+      progress: progressData => {
         const { loaded, total, file } = progressData;
         const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
-        console.log(`[Parakeet] Download progress :: file=${file} progress=${progress} loaded=${loaded} total=${total}`);
+        console.log(
+          `[Parakeet] Download progress :: file=${file} progress=${progress} loaded=${loaded} total=${total}`,
+        );
       },
     });
 
@@ -81,23 +99,22 @@ async function loadModel(modelVersion = 'parakeet-tdt-0.6b-v3', device = 'webgpu
  * Transcribe audio chunk using Parakeet
  */
 async function transcribe(audio) {
-  if (!model)
-    throw new Error('Model not loaded. Call load() first.');
+  if (!model) throw new Error('Model not loaded. Call load() first.');
 
   try {
     const startTime = performance.now();
 
     // Transcribe with parakeet.js
     const result = await model.transcribe(audio, TargetSampleRate, {
-      returnTimestamps: true,  // Get word-level timestamps
-      returnConfidences: true,  // Get confidence scores
-      temperature: 1.0,  // Greedy decoding
+      returnTimestamps: true, // Get word-level timestamps
+      returnConfidences: true, // Get confidence scores
+      temperature: 1.0, // Greedy decoding
     });
 
     const endTime = performance.now();
-    const latency = (endTime - startTime) / 1000;  // seconds
+    const latency = (endTime - startTime) / 1000; // seconds
     const audioDuration = audio.length / 16000;
-    const rtf = audioDuration / latency;  // Speed factor (inverse of traditional RTF)
+    const rtf = audioDuration / latency; // Speed factor (inverse of traditional RTF)
 
     // Convert parakeet.js word format to our sentence format
     const sentences = groupWordsIntoSentences(result.words || []);
@@ -106,7 +123,7 @@ async function transcribe(audio) {
       text: result.utterance_text || '',
       sentences,
       words: result.words || [],
-      chunks: result.words || [],  // For compatibility
+      chunks: result.words || [], // For compatibility
       metadata: {
         latency,
         audioDuration,
@@ -151,13 +168,13 @@ function groupWordsIntoSentences(words) {
       sentences.push({
         text: currentWords.join(' ').trim(),
         start: currentStart,
-        end: word.end_time || (word.start_time || 0),
+        end: word.end_time || word.start_time || 0,
       });
 
       // Start new sentence if there are more words
       if (i < words.length - 1) {
         currentWords = [];
-        currentStart = words[i + 1].start_time || (word.end_time || 0);
+        currentStart = words[i + 1].start_time || word.end_time || 0;
       }
     }
   }
@@ -165,12 +182,12 @@ function groupWordsIntoSentences(words) {
   return sentences;
 }
 
-
 const port = chrome.runtime.connect({ name: 'parakeet-offscreen' });
 
-port.onMessage.addListener(async (msg) => {
+port.onMessage.addListener(async msg => {
   const { type, audioBase64 } = msg || {};
-  if (type !== 'transcribe' || !audioBase64 || typeof audioBase64 !== 'string') return;
+  if (type !== 'transcribe' || !audioBase64 || typeof audioBase64 !== 'string')
+    return;
   try {
     const binary = atob(audioBase64);
     const bytes = new Uint8Array(binary.length);

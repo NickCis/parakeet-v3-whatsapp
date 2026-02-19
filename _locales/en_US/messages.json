@@ -1,6 +1,8 @@
 {
   "chrome_extension_name": { "message": "WhatsApp Parakeet Transcription" },
-  "chrome_extension_description": { "message": "Transcribe WhatsApp voice messages to text locally using Parakeet (no API key, runs in your browser)." },
+  "chrome_extension_description": {
+    "message": "Transcribe WhatsApp voice messages to text locally using Parakeet (no API key, runs in your browser)."
+  },
   "transcribe": { "message": "Transcribe" },
   "transcribing": { "message": "Transcribing…" },
   "downloading_model": { "message": "Downloading model…" },

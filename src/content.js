@@ -1,5 +1,21 @@
-const ContentLogPrefix = '[Parakeet-WA content]';
-console.log(ContentLogPrefix, 'script loaded');
+const ParakeetMessageTopic = 'parakeet-message';
+const AudioPlaySelector = 'span[data-icon="audio-play"]';
+const DataIdAttr = 'data-id';
+const LogPrefix = '[Parakeet-WA content]';
+
+function log(...args) {
+  console.log(LogPrefix, ...args);
+}
+
+function error(...args) {
+  console.error(LogPrefix, ...args);
+}
+
+function warn(...args) {
+  console.warn(LogPrefix, ...args);
+}
+
+log('script loaded');
 
 function getMessage(key) {
   try {
@@ -16,25 +32,44 @@ function injectScript(name) {
   document.head.appendChild(script);
 }
 
-document.addEventListener(EventRequestTranscribe, async function (ev) {
-  const detail = ev.detail || {};
-  const { requestId, audioBase64 } = detail;
-  if (requestId == null || !audioBase64 || typeof audioBase64 !== 'string') {
-    console.warn(ContentLogPrefix, 'ignoring: missing requestId or audioBase64');
+function sendMessage(type, payload) {
+  document.dispatchEvent(
+    new CustomEvent(ParakeetMessageTopic, {
+      detail: {
+        ...payload,
+        origin: 'content-script',
+        type,
+      },
+    }),
+  );
+}
+
+async function transcribe(detail) {
+  const { dataId, audioBase64 } = detail;
+  if (dataId == null || !audioBase64 || typeof audioBase64 !== 'string') {
+    warn('ignoring: missing dataId or audioBase64');
     return;
   }
-  console.log(ContentLogPrefix, 'sending to background', 'requestId=', requestId, 'audioBase64.length=', audioBase64.length);
+  log(
+    'sending to background',
+    'dataId=',
+    dataId,
+    'audioBase64.length=',
+    audioBase64.length,
+  );
 
   const sendResult = function (payload) {
-    document.dispatchEvent(
-      new CustomEvent(EventTranscriptResult, {
-        detail: Object.assign({ requestId }, payload),
-      }),
-    );
+    return sendMessage('transcribe', {
+      ...payload,
+      dataId,
+    });
   };
 
   try {
-    const reply = await chrome.runtime.sendMessage({ type: 'transcribe', audioBase64 });
+    const reply = await chrome.runtime.sendMessage({
+      type: 'transcribe',
+      audioBase64,
+    });
     if (reply && reply.error) {
       sendResult({ error: reply.error });
     } else if (reply && reply.transcript != null) {
@@ -43,13 +78,39 @@ document.addEventListener(EventRequestTranscribe, async function (ev) {
       sendResult({ error: getMessage('error_transcribe') });
     }
   } catch (err) {
-    console.error(ContentLogPrefix, 'error:', err);
-    sendResult({ error: (err && err.message) || getMessage('error_transcribe') });
+    error('error:', err);
+    sendResult({
+      error: (err && err.message) || getMessage('error_transcribe'),
+    });
+  }
+}
+
+document.addEventListener(ParakeetMessageTopic, async ev => {
+  const detail = ev.detail || {};
+  const { origin, type } = detail;
+  if (origin === 'content-script') return;
+
+  switch (type) {
+    case 'i18n.getMessage':
+      sendMessage('i18n.getMessage', {
+        messages: detail.keys.map(key => ({
+          key,
+          message: getMessage(key),
+        })),
+      });
+      return;
+
+    case 'transcribe':
+      transcribe(detail);
+      return;
+
+    default:
+      warn('Unhandled type:', type);
   }
 });
 
 try {
   injectScript('main.js');
 } catch (err) {
-  console.error(ContentLogPrefix, 'Failed to load main.js:', err);
+  error('Failed to load main.js:', err);
 }

@@ -12,6 +12,8 @@ const OffscreenJustification =
 
 let offscreenPort = null;
 let pendingSendResponse = null;
+/** Queue of { audioBase64, sendResponse } when parakeet is busy (one transcription at a time) */
+const transcribeQueue = [];
 
 async function ensureOffscreenDocument() {
   const offscreenUrl = chrome.runtime.getURL(OffscreenPath);
@@ -47,6 +49,12 @@ chrome.runtime.onConnect.addListener(port => {
       } catch (_) {}
       pendingSendResponse = null;
     }
+    for (const { sendResponse } of transcribeQueue) {
+      try {
+        sendResponse({ error: 'Offscreen closed.' });
+      } catch (_) {}
+    }
+    transcribeQueue.length = 0;
   });
   offscreenPort.onMessage.addListener(msg => {
     if (pendingSendResponse) {
@@ -54,6 +62,11 @@ chrome.runtime.onConnect.addListener(port => {
         pendingSendResponse(msg);
       } catch (_) {}
       pendingSendResponse = null;
+    }
+    if (transcribeQueue.length > 0) {
+      const next = transcribeQueue.shift();
+      pendingSendResponse = next.sendResponse;
+      offscreenPort.postMessage({ type: 'transcribe', audioBase64: next.audioBase64 });
     }
   });
 });
@@ -69,6 +82,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           error: 'Transcription not ready. Try again in a moment.',
         });
+        return;
+      }
+      if (pendingSendResponse !== null) {
+        transcribeQueue.push({ audioBase64, sendResponse });
         return;
       }
       pendingSendResponse = sendResponse;

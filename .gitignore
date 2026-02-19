@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+parakeet-v3-whatsapp-*.zip
 
 # Logs
 *.log

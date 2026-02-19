@@ -20,6 +20,16 @@ npm run build
 
 The built extension files are in the **`dist`** folder.
 
+### Zip for store upload
+
+To create a zip file for uploading to the Chrome Web Store (or other stores):
+
+```bash
+npm run dist
+```
+
+This runs `clean` → `build` → `package` and produces **`parakeet-v3-whatsapp-<version>.zip`** in the project root. You can also run `npm run package` after a build to create the zip without rebuilding.
+
 ## Usage
 
 1. Open Chrome and go to `chrome://extensions/`

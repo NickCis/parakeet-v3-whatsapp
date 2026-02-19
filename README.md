@@ -1,6 +1,15 @@
 # WhatsApp Parakeet Transcription
 
-Chrome extension that transcribes WhatsApp Web voice messages locally using [Parakeet TDT 0.6B v3](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) via [parakeet.js](https://github.com/ysdede/parakeet.js). No API key; all processing runs in your browser (WebGPU).
+**Disclaimer:** This project has no affiliation with WhatsApp, NVIDIA, or the Parakeet team. It is an independent, community-made Chrome extension.
+
+## Description
+
+A Chrome extension that transcribes WhatsApp Web voice messages **locally** in your browser using [Parakeet TDT 0.6B v3](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) via [parakeet.js](https://github.com/ysdede/parakeet.js). No API keys or cloud services—all processing runs on your machine with WebGPU. A "Transcribe" button appears next to each voice message; click it to get the transcript.
+
+**Inspired by:**
+
+- [parakeet-v3-streaming](https://huggingface.co/spaces/andito/parakeet-v3-streaming) (Hugging Face Space by andito)
+- [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js) by pedroslopez
 
 ## Build
 
@@ -9,21 +18,20 @@ npm install
 npm run build
 ```
 
-## Load in Chrome
-
-1. Open `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select the **`dist`** folder (not the repo root)
+The built extension files are in the **`dist`** folder.
 
 ## Usage
 
-1. Open [web.whatsapp.com](https://web.whatsapp.com)
-2. A "Transcribe" button appears next to each voice message
-3. Click it; the first time the ~2.5 GB model will download (one-time, cached in IndexedDB)
-4. The transcript appears below the button
+1. Open Chrome and go to `chrome://extensions/`
+2. Enable **Developer mode** (top right)
+3. Click **Load unpacked**
+4. Select the **`dist`** folder (not the repo root)
+5. Open [web.whatsapp.com](https://web.whatsapp.com)
+6. A **Transcribe** button appears next to each voice message
+7. Click it; the first time the ~2.5 GB model will download (one-time, cached in IndexedDB)
+8. The transcript appears below the button
 
 ## Requirements
 
-- Chrome 113+ (WebGPU)
-- The extension needs the **offscreen** permission to decode audio and run the model
+- Chrome 113+ (WebGPU support)
+- The extension uses the **offscreen** permission to decode audio and run the model

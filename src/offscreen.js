@@ -9,6 +9,12 @@ import { fromHub } from 'parakeet.js';
 
 const TargetSampleRate = 16000;
 
+const Prefix = '[Parakeet-WA offscreen]';
+
+function log(...args) {
+  console.log(Prefix, ...args);
+}
+
 /** Ensure ORT loads script/WASM from extension; must run before any Parakeet/ORT use. */
 async function ensureOrtPathsFromExtension() {
   const ortModule = await import('onnxruntime-web');
@@ -55,11 +61,7 @@ async function loadModel(
   if (loadPromise) return loadPromise;
 
   loadPromise = (async () => {
-    console.log(
-      '[Parakeet] Preparing ORT and fetching model manifest...',
-      modelVersion,
-      device,
-    );
+    log('Preparing ORT and fetching model manifest...', modelVersion, device);
     await ensureOrtPathsFromExtension();
 
     const backend = device === 'webgpu' ? 'webgpu-hybrid' : 'wasm';
@@ -83,13 +85,13 @@ async function loadModel(
       progress: progressData => {
         const { loaded, total, file } = progressData;
         const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
-        console.log(
-          `[Parakeet] Download progress :: file=${file} progress=${progress} loaded=${loaded} total=${total}`,
+        log(
+          `Download progress :: file=${file} progress=${progress} loaded=${loaded} total=${total}`,
         );
       },
     });
 
-    console.log('[Parakeet] Model loaded and ready.');
+    log('Model loaded and ready.');
     return model;
   })();
   return loadPromise;
@@ -182,22 +184,47 @@ function groupWordsIntoSentences(words) {
   return sentences;
 }
 
-const port = chrome.runtime.connect({ name: 'parakeet-offscreen' });
+let port = null;
 
-port.onMessage.addListener(async msg => {
-  const { type, audioBase64 } = msg || {};
-  if (type !== 'transcribe' || !audioBase64 || typeof audioBase64 !== 'string')
-    return;
-  try {
-    const binary = atob(audioBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const arrayBuffer = bytes.buffer;
-    const pcm = await decodeAndResample(arrayBuffer);
-    await loadModel();
-    const result = await transcribe(pcm);
-    port.postMessage({ transcript: result.text || '' });
-  } catch (e) {
-    port.postMessage({ error: (e && e.message) || String(e) });
+function connect() {
+  if (port) return;
+  log('Connecting to service worker...');
+  port = chrome.runtime.connect({ name: 'parakeet-offscreen' });
+
+  port.onDisconnect.addListener(() => {
+    log('port disconnected, retrying...');
+    port = null;
+  });
+
+  port.onMessage.addListener(async msg => {
+    const { type, audioBase64 } = msg || {};
+    if (
+      type !== 'transcribe' ||
+      !audioBase64 ||
+      typeof audioBase64 !== 'string'
+    )
+      return;
+    try {
+      const binary = atob(audioBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const arrayBuffer = bytes.buffer;
+      const pcm = await decodeAndResample(arrayBuffer);
+      await loadModel();
+      const result = await transcribe(pcm);
+      port.postMessage({ transcript: result.text || '' });
+    } catch (e) {
+      port.postMessage({ error: (e && e.message) || String(e) });
+    }
+  });
+}
+
+// Allow SW to explicitly request reconnection
+chrome.runtime.onMessage.addListener(msg => {
+  if (msg.type === 'offscreen-reconnect') {
+    connect();
   }
 });
+
+// Initial connection
+connect();

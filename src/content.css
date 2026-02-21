@@ -12,6 +12,8 @@
 }
 
 .parakeet-wa-transcribe-result {
+  width: fit-content;
+  padding-right: 28px;
   user-select: text;
   position: relative;
   padding-bottom: 8px;

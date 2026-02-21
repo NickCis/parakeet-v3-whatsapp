@@ -3,8 +3,12 @@
  * to offscreen via port and sends response back to content script.
  */
 
-const PREFIX = '[Parakeet-WA background]';
-console.log(PREFIX, 'service worker loaded');
+const Prefix = '[Parakeet-WA background]';
+function log(...args) {
+  console.log(Prefix, ...args);
+}
+
+log('service worker loaded');
 
 const OffscreenPath = 'offscreen.html';
 const OffscreenJustification =
@@ -21,6 +25,7 @@ async function ensureOffscreenDocument() {
     contextTypes: ['OFFSCREEN_DOCUMENT'],
     documentUrls: [offscreenUrl],
   });
+
   if (existing.length > 0) return;
   await chrome.offscreen.createDocument({
     url: OffscreenPath,
@@ -38,10 +43,20 @@ async function waitForPort(maxMs = 5000) {
   return false;
 }
 
+async function ensureOffscreenConnection() {
+  await ensureOffscreenDocument();
+
+  if (offscreenPort) return true;
+
+  chrome.runtime.sendMessage({ type: 'offscreen-reconnect' });
+  return await waitForPort();
+}
+
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== 'parakeet-offscreen') return;
   offscreenPort = port;
   offscreenPort.onDisconnect.addListener(() => {
+    log('onDisconnect', port);
     offscreenPort = null;
     if (pendingSendResponse) {
       try {
@@ -66,7 +81,10 @@ chrome.runtime.onConnect.addListener(port => {
     if (transcribeQueue.length > 0) {
       const next = transcribeQueue.shift();
       pendingSendResponse = next.sendResponse;
-      offscreenPort.postMessage({ type: 'transcribe', audioBase64: next.audioBase64 });
+      offscreenPort.postMessage({
+        type: 'transcribe',
+        audioBase64: next.audioBase64,
+      });
     }
   });
 });
@@ -77,7 +95,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       await ensureOffscreenDocument();
-      const hasPort = await waitForPort();
+      const hasPort = await ensureOffscreenConnection();
       if (!hasPort || !offscreenPort) {
         sendResponse({
           error: 'Transcription not ready. Try again in a moment.',

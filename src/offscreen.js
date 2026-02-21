@@ -192,7 +192,7 @@ function connect() {
   port = chrome.runtime.connect({ name: 'parakeet-offscreen' });
 
   port.onDisconnect.addListener(() => {
-    log('port disconnected, retrying...');
+    log('port disconnected');
     port = null;
   });
 

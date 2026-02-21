@@ -7,6 +7,9 @@ const Prefix = '[Parakeet-WA background]';
 function log(...args) {
   console.log(Prefix, ...args);
 }
+function warn(...args) {
+  console.warn(Prefix, ...args);
+}
 
 log('service worker loaded');
 
@@ -15,46 +18,71 @@ const OffscreenJustification =
   'Decode and process WhatsApp audio for local Parakeet transcription (WebGPU).';
 
 let offscreenPort = null;
+let portReadyPromise = null;
+let portReadyResolve = null;
 let pendingSendResponse = null;
 /** Queue of { audioBase64, sendResponse } when parakeet is busy (one transcription at a time) */
 const transcribeQueue = [];
 
-async function ensureOffscreenDocument() {
-  const offscreenUrl = chrome.runtime.getURL(OffscreenPath);
-  const existing = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT'],
-    documentUrls: [offscreenUrl],
-  });
+async function ensureOffscreenConnection(timeoutMs = 5000) {
+  try {
+    const offscreenUrl = chrome.runtime.getURL(OffscreenPath);
+    const existing = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [offscreenUrl],
+    });
 
-  if (existing.length > 0) return;
-  await chrome.offscreen.createDocument({
-    url: OffscreenPath,
-    reasons: ['BLOBS', 'WORKERS', 'LOCAL_STORAGE'],
-    justification: OffscreenJustification,
-  });
-}
+    if (existing.length === 0) {
+      await chrome.offscreen.createDocument({
+        url: OffscreenPath,
+        reasons: ['BLOBS', 'WORKERS', 'LOCAL_STORAGE'],
+        justification: OffscreenJustification,
+      });
+    }
 
-async function waitForPort(maxMs = 5000) {
-  const step = 100;
-  for (let elapsed = 0; elapsed < maxMs; elapsed += step) {
     if (offscreenPort) return true;
-    await new Promise(r => setTimeout(r, step));
+
+    if (!portReadyPromise) {
+      portReadyPromise = new Promise(resolve => {
+        portReadyResolve = resolve;
+      });
+    }
+
+    chrome.runtime.sendMessage({ type: 'offscreen-reconnect' });
+
+    await Promise.race([
+      portReadyPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), timeoutMs),
+      ),
+    ]);
+
+    return true;
+  } catch (err) {
+    warn('Offscreen connection failed, restarting…');
+
+    portReadyPromise = null;
+    portReadyResolve = null;
+    offscreenPort = null;
+
+    try {
+      await chrome.offscreen.closeDocument();
+    } catch (_) {}
+
+    return false;
   }
-  return false;
-}
-
-async function ensureOffscreenConnection() {
-  await ensureOffscreenDocument();
-
-  if (offscreenPort) return true;
-
-  chrome.runtime.sendMessage({ type: 'offscreen-reconnect' });
-  return await waitForPort();
 }
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== 'parakeet-offscreen') return;
   offscreenPort = port;
+
+  if (portReadyResolve) {
+    portReadyResolve();
+    portReadyResolve = null;
+    portReadyPromise = null;
+  }
+
   offscreenPort.onDisconnect.addListener(() => {
     log('onDisconnect', port);
     offscreenPort = null;
@@ -71,6 +99,7 @@ chrome.runtime.onConnect.addListener(port => {
     }
     transcribeQueue.length = 0;
   });
+
   offscreenPort.onMessage.addListener(msg => {
     if (pendingSendResponse) {
       try {
@@ -94,7 +123,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const audioBase64 = message.audioBase64;
   (async () => {
     try {
-      await ensureOffscreenDocument();
       const hasPort = await ensureOffscreenConnection();
       if (!hasPort || !offscreenPort) {
         sendResponse({

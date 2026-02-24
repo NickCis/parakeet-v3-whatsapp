@@ -2,6 +2,14 @@
 
 **Disclaimer:** This project has no affiliation with WhatsApp, NVIDIA, or the Parakeet team. It is an independent, community-made Chrome extension.
 
+## Download
+
+The extension can be downloaded from the **Chrome Web Store**:
+
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/jclpnlbgonmnhfocgmhjbaoeglooegjj.svg)](https://chromewebstore.google.com/detail/whatsapp-parakeet-transcr/jclpnlbgonmnhfocgmhjbaoeglooegjj)
+
+**[Install from Chrome Web Store](https://chromewebstore.google.com/detail/whatsapp-parakeet-transcr/jclpnlbgonmnhfocgmhjbaoeglooegjj)**
+
 ## Description
 
 A Chrome extension that transcribes WhatsApp Web voice messages **locally** in your browser using [Parakeet TDT 0.6B v3](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) via [parakeet.js](https://github.com/ysdede/parakeet.js). No API keys or cloud services—all processing runs on your machine with WebGPU. A "Transcribe" button appears next to each voice message; click it to get the transcript.

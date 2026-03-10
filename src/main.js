@@ -23,7 +23,7 @@
   try {
     const ParakeetMessageTopic = 'parakeet-message';
     const DataAttrTranscribeAttached = 'data-parakeet-transcribe-attached';
-    const AudioPlaySelector = 'span[data-icon="audio-play"]';
+    const AudioPlaySelector = 'div[role="slider"],div[aria-valuemin="0"]';
     const DataIdAttr = 'data-id';
 
     function sendMessage(type, payload) {
@@ -246,9 +246,10 @@
         for (const node of mutation.addedNodes) {
           if (!(node instanceof HTMLElement)) continue;
           const spans = node.querySelectorAll
-            ? node.querySelectorAll(AudioPlaySelector)
+            ? node.parentNode.querySelectorAll(AudioPlaySelector)
             : [];
           for (const span of spans) {
+            console.log('span', span);
             const container = findParentWithDataId(span);
             if (!container) continue;
             if (container.querySelector('.message-out')) continue;

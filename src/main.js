@@ -65,13 +65,26 @@
     }
 
     /**
+     * DOM `data-id` may not equal `Store.Msg` keys anymore; find the first
+     * `_index` key that contains the attribute value (your working approach).
+     */
+    function resolveStoreMessageIdFromDomDataId(dataId) {
+      if (dataId == null || dataId === '') return dataId;
+      const idx = window.Store?.Msg?._index;
+      if (!idx || typeof idx !== 'object') return dataId;
+      const hit = Object.keys(idx).filter(n => n.includes(dataId))[0];
+      return hit || dataId;
+    }
+
+    /**
      * Returns { arrayBuffer, mimetype } for the message audio.
      * https://github.com/pedroslopez/whatsapp-web.js/blob/9b1eb76b2ba0fd26e1d8f46e0bf8ca52bea2506c/src/structures/Message.js#L445
      */
     async function getAudioBlobForId(id) {
+      const storeId = resolveStoreMessageIdFromDomDataId(id);
       const msg =
-        window.Store.Msg.get(id) ||
-        (await window.Store.Msg.getMessagesById([id]))?.messages?.[0];
+        window.Store.Msg.get(storeId) ||
+        (await window.Store.Msg.getMessagesById([storeId]))?.messages?.[0];
       if (
         !msg ||
         !msg.mediaData ||
@@ -249,7 +262,6 @@
             ? node.parentNode.querySelectorAll(AudioPlaySelector)
             : [];
           for (const span of spans) {
-            console.log('span', span);
             const container = findParentWithDataId(span);
             if (!container) continue;
             if (container.querySelector('.message-out')) continue;

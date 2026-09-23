@@ -64,13 +64,32 @@
       }, {});
     }
 
+    async function waitForRequire(timeoutMs = 30000) {
+      const start = Date.now();
+      while (typeof window.require === 'undefined') {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error('WhatsApp require not available');
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+
+    function getMsgCollection() {
+      return window.require('WAWebCollections').Msg;
+    }
+
     /**
-     * DOM `data-id` may not equal `Store.Msg` keys anymore; find the first
-     * `_index` key that contains the attribute value (your working approach).
+     * DOM `data-id` may not equal Msg collection keys; find the first
+     * `_index` key that contains the attribute value.
      */
     function resolveStoreMessageIdFromDomDataId(dataId) {
       if (dataId == null || dataId === '') return dataId;
-      const idx = window.Store?.Msg?._index;
+      let idx;
+      try {
+        idx = getMsgCollection()?._index;
+      } catch {
+        return dataId;
+      }
       if (!idx || typeof idx !== 'object') return dataId;
       const hit = Object.keys(idx).filter(n => n.includes(dataId))[0];
       return hit || dataId;
@@ -78,13 +97,16 @@
 
     /**
      * Returns { arrayBuffer, mimetype } for the message audio.
-     * https://github.com/pedroslopez/whatsapp-web.js/blob/9b1eb76b2ba0fd26e1d8f46e0bf8ca52bea2506c/src/structures/Message.js#L445
+     * Mirrors whatsapp-web.js WWebJS.resolveMediaBlob:
+     * https://github.com/wwebjs/whatsapp-web.js/blob/main/src/util/Injected/Utils.js
      */
     async function getAudioBlobForId(id) {
+      await waitForRequire();
+      const Msg = getMsgCollection();
       const storeId = resolveStoreMessageIdFromDomDataId(id);
       const msg =
-        window.Store.Msg.get(storeId) ||
-        (await window.Store.Msg.getMessagesById([storeId]))?.messages?.[0];
+        Msg.get(storeId) ||
+        (await Msg.getMessagesById([storeId]))?.messages?.[0];
       if (
         !msg ||
         !msg.mediaData ||
@@ -94,6 +116,13 @@
         throw new Error('No msg, mediaData or REUPLOADING');
       }
 
+      // Always download — cache eviction can leave stage=RESOLVED with empty cache.
+      await msg.downloadMedia({
+        downloadEvenIfExpensive: true,
+        rmrReason: 1,
+        isUserInitiated: true,
+      });
+
       if (
         msg.mediaData.mediaStage.includes('ERROR') ||
         msg.mediaData.mediaStage === 'FETCHING'
@@ -102,54 +131,28 @@
         throw new Error('ERROR');
       }
 
-      if (msg.mediaData.mediaStage !== 'RESOLVED') {
-        await msg.downloadMedia({
-          downloadEvenIfExpensive: true,
-          rmrReason: 1,
-        });
+      const cached = window
+        .require('WAWebMediaInMemoryBlobCache')
+        .InMemoryMediaBlobCache.get(msg.mediaObject?.filehash);
+
+      let blob;
+      if (cached) {
+        blob = cached;
+      } else if (msg.mediaObject?.mediaBlob) {
+        blob = msg.mediaObject.mediaBlob.forceToBlob();
       }
 
-      try {
-        const mockQpl = {
-          addAnnotations: function () {
-            return this;
-          },
-          addPoint: function () {
-            return this;
-          },
-        };
-        const decryptedMedia =
-          await window.Store.DownloadManager.downloadAndMaybeDecrypt({
-            directPath: msg.directPath,
-            encFilehash: msg.encFilehash,
-            filehash: msg.filehash,
-            mediaKey: msg.mediaKey,
-            mediaKeyTimestamp: msg.mediaKeyTimestamp,
-            type: msg.type,
-            signal: new AbortController().signal,
-            downloadQpl: mockQpl,
-          });
-
-        let arrayBuffer;
-        let mimetype = msg.mimetype || msg.mediaData?.mimetype || '';
-        if (decryptedMedia instanceof Blob) {
-          mimetype = mimetype || decryptedMedia.type || 'audio/ogg';
-          arrayBuffer = await decryptedMedia.arrayBuffer();
-        } else if (decryptedMedia instanceof ArrayBuffer) {
-          arrayBuffer = decryptedMedia;
-        } else if (
-          decryptedMedia &&
-          typeof decryptedMedia.arrayBuffer === 'function'
-        ) {
-          arrayBuffer = await decryptedMedia.arrayBuffer();
-        } else {
-          throw new Error('Unsupported decryptedMedia type');
-        }
-        return { arrayBuffer, mimetype };
-      } catch (e) {
-        if (e.status && e.status === 404) return undefined;
-        throw e;
+      if (!blob) {
+        throw new Error('No media blob available');
       }
+
+      const mimetype =
+        msg.mimetype ||
+        msg.mediaData?.mimetype ||
+        blob.type ||
+        'audio/ogg';
+      const arrayBuffer = await blob.arrayBuffer();
+      return { arrayBuffer, mimetype };
     }
 
     function arrayBufferToBase64(buffer) {
@@ -161,27 +164,6 @@
       }
       return btoa(binary);
     }
-
-    /**
-    https://github.com/pedroslopez/whatsapp-web.js/blob/main/src/util/Injected/Store.js
-    */
-    function injectStore() {
-      if (typeof window.require === 'undefined') {
-        setTimeout(injectStore, 100);
-        return;
-      }
-
-      try {
-        window.Store = Object.assign({}, window.require('WAWebCollections'));
-        window.Store.DownloadManager = window.require(
-          'WAWebDownloadManager',
-        ).downloadManager;
-      } catch (e) {
-        setTimeout(injectStore, 100);
-      }
-    }
-
-    injectStore();
 
     function attachButtonToContainer(container) {
       if (container.hasAttribute(DataAttrTranscribeAttached)) return;

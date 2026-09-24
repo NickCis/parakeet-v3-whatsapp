@@ -14,6 +14,15 @@
   "downloading_model": {
     "message": "Descargando modelo…"
   },
+  "downloading_model_progress": {
+    "message": "Descargando modelo… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
   "error_decode": {
     "message": "No se pudo decodificar el audio."
   },

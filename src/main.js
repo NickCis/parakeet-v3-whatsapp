@@ -180,28 +180,101 @@
       const resultContainer = document.createElement('div');
       resultContainer.className = 'parakeet-wa-transcribe-result';
       resultContainer.style.display = 'none';
-      resultContainer.innerHTML = `<span></span><svg class="parakeet-wa-transcribe-result-svg" viewBox="0 0 19 26" height="26" width="19" preserveAspectRatio="xMidYMid meet" version="1.1" x="0px" y="0px" enable-background="new 0 0 19 26"><title>ptt-status</title><path fill="#FFFFFF" class="parakeet-wa-transcribe-result-svg-bg" d="M9.217,24.401c-1.158,0-2.1-0.941-2.1-2.1v-2.366c-2.646-0.848-4.652-3.146-5.061-5.958L2.004,13.62 l-0.003-0.081c-0.021-0.559,0.182-1.088,0.571-1.492c0.39-0.404,0.939-0.637,1.507-0.637h0.3c0.254,0,0.498,0.044,0.724,0.125v-6.27 C5.103,2.913,7.016,1,9.367,1c2.352,0,4.265,1.913,4.265,4.265v6.271c0.226-0.081,0.469-0.125,0.723-0.125h0.3 c0.564,0,1.112,0.233,1.501,0.64s0.597,0.963,0.571,1.526c0,0.005,0.001,0.124-0.08,0.6c-0.47,2.703-2.459,4.917-5.029,5.748v2.378 c0,1.158-0.942,2.1-2.1,2.1H9.217V24.401z"></path><path fill="currentColor" class="parakeet-wa-transcribe-result-svg-icon" d="M9.367,15.668c1.527,0,2.765-1.238,2.765-2.765V5.265c0-1.527-1.238-2.765-2.765-2.765 S6.603,3.738,6.603,5.265v7.638C6.603,14.43,7.84,15.668,9.367,15.668z M14.655,12.91h-0.3c-0.33,0-0.614,0.269-0.631,0.598 c0,0,0,0-0.059,0.285c-0.41,1.997-2.182,3.505-4.298,3.505c-2.126,0-3.904-1.521-4.304-3.531C5.008,13.49,5.008,13.49,5.008,13.49 c-0.016-0.319-0.299-0.579-0.629-0.579h-0.3c-0.33,0-0.591,0.258-0.579,0.573c0,0,0,0,0.04,0.278 c0.378,2.599,2.464,4.643,5.076,4.978v3.562c0,0.33,0.27,0.6,0.6,0.6h0.3c0.33,0,0.6-0.27,0.6-0.6V18.73 c2.557-0.33,4.613-2.286,5.051-4.809c0.057-0.328,0.061-0.411,0.061-0.411C15.243,13.18,14.985,12.91,14.655,12.91z"></path></svg>`;
-      const resultEl = resultContainer.querySelector('span');
+      resultContainer.innerHTML = `<span class="parakeet-wa-transcribe-result-text"></span><svg class="parakeet-wa-transcribe-result-svg" viewBox="0 0 19 26" height="26" width="19" preserveAspectRatio="xMidYMid meet" version="1.1" x="0px" y="0px" enable-background="new 0 0 19 26"><title>ptt-status</title><path fill="#FFFFFF" class="parakeet-wa-transcribe-result-svg-bg" d="M9.217,24.401c-1.158,0-2.1-0.941-2.1-2.1v-2.366c-2.646-0.848-4.652-3.146-5.061-5.958L2.004,13.62 l-0.003-0.081c-0.021-0.559,0.182-1.088,0.571-1.492c0.39-0.404,0.939-0.637,1.507-0.637h0.3c0.254,0,0.498,0.044,0.724,0.125v-6.27 C5.103,2.913,7.016,1,9.367,1c2.352,0,4.265,1.913,4.265,4.265v6.271c0.226-0.081,0.469-0.125,0.723-0.125h0.3 c0.564,0,1.112,0.233,1.501,0.64s0.597,0.963,0.571,1.526c0,0.005,0.001,0.124-0.08,0.6c-0.47,2.703-2.459,4.917-5.029,5.748v2.378 c0,1.158-0.942,2.1-2.1,2.1H9.217V24.401z"></path><path fill="currentColor" class="parakeet-wa-transcribe-result-svg-icon" d="M9.367,15.668c1.527,0,2.765-1.238,2.765-2.765V5.265c0-1.527-1.238-2.765-2.765-2.765 S6.603,3.738,6.603,5.265v7.638C6.603,14.43,7.84,15.668,9.367,15.668z M14.655,12.91h-0.3c-0.33,0-0.614,0.269-0.631,0.598 c0,0,0,0-0.059,0.285c-0.41,1.997-2.182,3.505-4.298,3.505c-2.126,0-3.904-1.521-4.304-3.531C5.008,13.49,5.008,13.49,5.008,13.49 c-0.016-0.319-0.299-0.579-0.629-0.579h-0.3c-0.33,0-0.591,0.258-0.579,0.573c0,0,0,0,0.04,0.278 c0.378,2.599,2.464,4.643,5.076,4.978v3.562c0,0.33,0.27,0.6,0.6,0.6h0.3c0.33,0,0.6-0.27,0.6-0.6V18.73 c2.557-0.33,4.613-2.286,5.051-4.809c0.057-0.328,0.061-0.411,0.061-0.411C15.243,13.18,14.985,12.91,14.655,12.91z"></path></svg>`;
+      const resultEl = resultContainer.querySelector(
+        '.parakeet-wa-transcribe-result-text',
+      );
       const divLoading = document.createElement('div');
       divLoading.className = 'parakeet-wa-loading-container';
       divLoading.innerHTML = `<div><svg class="parakeet-wa-loading" width="12" height="12" viewBox="0 0 46 46"><circle class="parakeet-wa-loading-circle" cx="23" cy="23" r="20" fill="none" stroke-width="6"></circle></svg></div><span class="parakeet-wa-loading-message">${I18N['transcribing']}</span>`;
       divLoading.style.display = 'none';
+      const loadingMessageEl = divLoading.querySelector(
+        '.parakeet-wa-loading-message',
+      );
+
+      function setLoadingMessage(text) {
+        loadingMessageEl.textContent = text || I18N['transcribing'];
+      }
+
+      function setResultText(transcript, fixedText, activeText) {
+        resultEl.replaceChildren();
+        const useSplit =
+          (fixedText && fixedText.length > 0) ||
+          (activeText && activeText.length > 0);
+        if (useSplit) {
+          if (fixedText) {
+            const fixedSpan = document.createElement('span');
+            fixedSpan.className = 'parakeet-wa-transcribe-fixed';
+            fixedSpan.textContent = fixedText;
+            resultEl.appendChild(fixedSpan);
+          }
+          if (fixedText && activeText) {
+            resultEl.appendChild(document.createTextNode(' '));
+          }
+          if (activeText) {
+            const activeSpan = document.createElement('span');
+            activeSpan.className = 'parakeet-wa-transcribe-active';
+            activeSpan.textContent = activeText;
+            resultEl.appendChild(activeSpan);
+          }
+        } else {
+          resultEl.textContent = transcript || '';
+        }
+      }
+
+      function finishTranscription(err, transcript) {
+        resultEl.replaceChildren();
+        resultEl.textContent = err != null ? err : transcript || '';
+        resultContainer.classList.remove('parakeet-wa-transcribe-result--partial');
+        resultContainer.style.display = null;
+        divLoading.style.display = 'none';
+        setLoadingMessage(I18N['transcribing']);
+      }
 
       btn.addEventListener('click', async () => {
         if (CompletedByRequestId[dataId]) {
           btn.style.display = 'none';
+          resultEl.replaceChildren();
           resultEl.textContent = CompletedByRequestId[dataId];
+          resultContainer.classList.remove(
+            'parakeet-wa-transcribe-result--partial',
+          );
           resultContainer.style.display = null;
           return;
         }
 
         btn.style.display = 'none';
+        resultContainer.style.display = 'none';
+        resultContainer.classList.remove('parakeet-wa-transcribe-result--partial');
+        resultEl.replaceChildren();
+        setLoadingMessage(I18N['transcribing']);
         divLoading.style.display = null;
 
-        PendingByRequestId[dataId] = (err, transcript) => {
-          resultEl.textContent = err != null ? err : transcript || '';
-          resultContainer.style.display = null;
-          divLoading.style.display = 'none';
+        PendingByRequestId[dataId] = {
+          onProgress(detail) {
+            if (detail.message) setLoadingMessage(detail.message);
+            divLoading.style.display = null;
+
+            const hasPartial =
+              (detail.fixedText && detail.fixedText.length > 0) ||
+              (detail.activeText && detail.activeText.length > 0) ||
+              (detail.transcript && detail.transcript.length > 0);
+
+            if (hasPartial) {
+              setResultText(
+                detail.transcript,
+                detail.fixedText,
+                detail.activeText,
+              );
+              resultContainer.classList.add(
+                'parakeet-wa-transcribe-result--partial',
+              );
+              resultContainer.style.display = null;
+            }
+          },
+          onDone(err, transcript) {
+            finishTranscription(err, transcript);
+          },
         };
 
         try {
@@ -217,15 +290,18 @@
           const audioBase64 = arrayBufferToBase64(arrayBuffer);
           sendMessage('transcribe', { dataId, audioBase64 });
         } catch (err) {
-          resultEl.textContent = (err && err.message) || 'Failed to get audio.';
+          finishTranscription(
+            (err && err.message) || 'Failed to get audio.',
+            null,
+          );
           btn.style.display = 'block';
-          divLoading.style.display = 'none';
           delete PendingByRequestId[dataId];
         }
       });
 
       if (CompletedByRequestId[dataId]) {
         btn.style.display = 'none';
+        resultEl.replaceChildren();
         resultEl.textContent = CompletedByRequestId[dataId];
         resultContainer.style.display = null;
       }
@@ -268,8 +344,16 @@
           const pending = PendingByRequestId[dataId];
           if (!pending) return;
           delete PendingByRequestId[dataId];
-          pending(err, transcript);
+          pending.onDone(err, transcript);
           if (transcript) CompletedByRequestId[dataId] = transcript;
+          return;
+        }
+
+        case 'transcribe.progress': {
+          const { dataId } = detail;
+          const pending = PendingByRequestId[dataId];
+          if (!pending?.onProgress) return;
+          pending.onProgress(detail);
           return;
         }
 
@@ -285,7 +369,11 @@
       }
     });
 
-    const I18N = await i18nGetMessages(['transcribe', 'transcribing']);
+    const I18N = await i18nGetMessages([
+      'transcribe',
+      'transcribing',
+      'downloading_model',
+    ]);
 
     if (document.body) {
       observer.observe(document.body, { childList: true, subtree: true });

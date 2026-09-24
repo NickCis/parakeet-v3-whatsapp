@@ -6,6 +6,15 @@
   "transcribe": { "message": "Transcribe" },
   "transcribing": { "message": "Transcribing…" },
   "downloading_model": { "message": "Downloading model…" },
+  "downloading_model_progress": {
+    "message": "Downloading model… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
   "error_decode": { "message": "Could not decode audio." },
   "error_transcribe": { "message": "Transcription failed." },
   "error_loading": { "message": "Model still loading. Please wait." }

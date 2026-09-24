@@ -1,13 +1,17 @@
 /**
  * Offscreen document: runs Parakeet (WebGPU) and decode/resample.
- * Connects to the service worker; receives { type: 'transcribe', audioBase64 }, replies with { transcript } or { error }.
+ * Connects to the service worker; receives { type: 'transcribe', audioBase64 },
+ * posts progress updates, then replies with { transcript } or { error }.
  *
  * We set ONNX Runtime WASM paths to the extension base URL before Parakeet runs so the jsep script/WASM
  * are loaded from the extension (CSP allows 'self') instead of the CDN.
  */
 import { fromHub } from 'parakeet.js';
+import { SmartProgressiveStreamingHandler } from './progressive-streaming.js';
 
 const TargetSampleRate = 16000;
+/** Voice notes longer than this use progressive (chunked) transcription. */
+const StreamingDurationThresholdSec = 60;
 
 const Prefix = '[Parakeet-WA offscreen]';
 
@@ -42,7 +46,7 @@ function decodeAndResample(arrayBuffer) {
           const ch = rendered.getChannelData(0);
           const pcm = new Float32Array(ch.length);
           pcm.set(ch);
-          resolve(pcm);
+          resolve({ pcm, duration });
         }, reject);
       },
       reject,
@@ -53,6 +57,25 @@ function decodeAndResample(arrayBuffer) {
 let model = null;
 let loadPromise = null;
 
+function postProgress(payload) {
+  if (port) port.postMessage({ type: 'progress', ...payload });
+}
+
+/**
+ * Aggregate per-file download progress into an overall percentage.
+ * @param {Map<string, { loaded: number, total: number }>} fileProgress
+ */
+function overallDownloadPercent(fileProgress) {
+  let loaded = 0;
+  let total = 0;
+  for (const p of fileProgress.values()) {
+    loaded += p.loaded || 0;
+    total += p.total || 0;
+  }
+  if (total <= 0) return 0;
+  return Math.min(100, Math.round((loaded / total) * 100));
+}
+
 async function loadModel(
   modelVersion = 'parakeet-tdt-0.6b-v3',
   device = 'webgpu',
@@ -62,6 +85,7 @@ async function loadModel(
 
   loadPromise = (async () => {
     log('Preparing ORT and fetching model manifest...', modelVersion, device);
+    postProgress({ stage: 'download', percent: 0 });
     await ensureOrtPathsFromExtension();
 
     const backend = device === 'webgpu' ? 'webgpu-hybrid' : 'wasm';
@@ -78,75 +102,107 @@ async function loadModel(
             preprocessor: 'nemo128',
           };
 
-    // Track which files we've already sent 'initiate' for
+    const fileProgress = new Map();
+
     model = await fromHub(modelVersion, {
       backend,
       ...quantization,
       progress: progressData => {
         const { loaded, total, file } = progressData;
-        const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
+        fileProgress.set(file, { loaded: loaded || 0, total: total || 0 });
+        const percent = overallDownloadPercent(fileProgress);
         log(
-          `Download progress :: file=${file} progress=${progress} loaded=${loaded} total=${total}`,
+          `Download progress :: file=${file} progress=${percent} loaded=${loaded} total=${total}`,
         );
+        postProgress({ stage: 'download', percent, file });
       },
     });
 
     log('Model loaded and ready.');
+    postProgress({ stage: 'download', percent: 100 });
     return model;
-  })();
+  })().catch(err => {
+    loadPromise = null;
+    throw err;
+  });
+
   return loadPromise;
 }
 
 /**
- * Transcribe audio chunk using Parakeet
+ * Transcribe a single PCM window (used by one-shot and progressive handler).
+ * @param {Float32Array} audio
  */
-async function transcribe(audio) {
+async function transcribeWindow(audio) {
   if (!model) throw new Error('Model not loaded. Call load() first.');
 
-  try {
-    const startTime = performance.now();
+  const result = await model.transcribe(audio, TargetSampleRate, {
+    returnTimestamps: true,
+    returnConfidences: true,
+    temperature: 1.0,
+  });
 
-    // Transcribe with parakeet.js
-    const result = await model.transcribe(audio, TargetSampleRate, {
-      returnTimestamps: true, // Get word-level timestamps
-      returnConfidences: true, // Get confidence scores
-      temperature: 1.0, // Greedy decoding
-    });
+  const sentences = groupWordsIntoSentences(result.words || []);
 
-    const endTime = performance.now();
-    const latency = (endTime - startTime) / 1000; // seconds
-    const audioDuration = audio.length / 16000;
-    const rtf = audioDuration / latency; // Speed factor (inverse of traditional RTF)
-
-    // Convert parakeet.js word format to our sentence format
-    const sentences = groupWordsIntoSentences(result.words || []);
-
-    return {
-      text: result.utterance_text || '',
-      sentences,
-      words: result.words || [],
-      chunks: result.words || [], // For compatibility
-      metadata: {
-        latency,
-        audioDuration,
-        rtf,
-        confidence: result.confidence_scores,
-        metrics: result.metrics,
-      },
-    };
-  } catch (error) {
-    console.error('Transcription error:', error);
-    throw error;
-  }
+  return {
+    text: result.utterance_text || '',
+    sentences,
+    words: result.words || [],
+  };
 }
 
 /**
- * Group words into sentences based on punctuation
- *
- * Note: This is a simplified implementation since parakeet.js provides word-level
- * alignments but not sentence-level. The Python implementation uses model-provided
- * sentence boundaries. We split on sentence-ending punctuation (.!?) to approximate
- * sentence boundaries for the progressive streaming window management.
+ * One-shot transcription of the full buffer.
+ * @param {Float32Array} audio
+ */
+async function transcribeOneShot(audio) {
+  const startTime = performance.now();
+  const result = await transcribeWindow(audio);
+  const latency = (performance.now() - startTime) / 1000;
+  const audioDuration = audio.length / TargetSampleRate;
+  log(
+    `One-shot done: duration=${audioDuration.toFixed(1)}s latency=${latency.toFixed(2)}s rtf=${(audioDuration / latency).toFixed(2)}x`,
+  );
+  return result.text || '';
+}
+
+/**
+ * Progressive / chunked transcription for long audio.
+ * @param {Float32Array} audio
+ */
+async function transcribeStreaming(audio) {
+  const handler = new SmartProgressiveStreamingHandler(
+    { transcribe: pcm => transcribeWindow(pcm) },
+    {
+      maxWindowSize: 15.0,
+      sentenceBuffer: 2.0,
+      sampleRate: TargetSampleRate,
+    },
+  );
+
+  const audioDuration = audio.length / TargetSampleRate;
+  let lastText = '';
+
+  for await (const partial of handler.transcribeBatch(audio)) {
+    lastText = partial.text;
+    postProgress({
+      stage: 'transcribe',
+      streaming: true,
+      fixedText: partial.fixedText || '',
+      activeText: partial.activeText || '',
+      transcript: lastText,
+      timestamp: partial.timestamp,
+      audioDuration,
+      isFinal: partial.isFinal,
+    });
+  }
+
+  return lastText;
+}
+
+/**
+ * Group words into sentences based on punctuation.
+ * Used for sentence-aware window sliding in progressive transcription.
  */
 function groupWordsIntoSentences(words) {
   if (!words || words.length === 0) {
@@ -161,19 +217,15 @@ function groupWordsIntoSentences(words) {
     const word = words[i];
     currentWords.push(word.text);
 
-    // Check if this word ends a sentence (only period, question mark, exclamation)
-    // Note: We explicitly ignore commas - they don't end sentences
     const endsWithTerminalPunctuation = /[.!?]$/.test(word.text);
 
     if (endsWithTerminalPunctuation || i === words.length - 1) {
-      // Create sentence
       sentences.push({
         text: currentWords.join(' ').trim(),
         start: currentStart,
         end: word.end_time || word.start_time || 0,
       });
 
-      // Start new sentence if there are more words
       if (i < words.length - 1) {
         currentWords = [];
         currentStart = words[i + 1].start_time || word.end_time || 0;
@@ -209,22 +261,44 @@ function connect() {
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const arrayBuffer = bytes.buffer;
-      const pcm = await decodeAndResample(arrayBuffer);
-      await loadModel();
-      const result = await transcribe(pcm);
-      port.postMessage({ transcript: result.text || '' });
+
+      // Decode audio and load model in parallel (model download shows progress)
+      const [{ pcm, duration }] = await Promise.all([
+        decodeAndResample(arrayBuffer),
+        loadModel(),
+      ]);
+      log(`Decoded audio duration=${duration.toFixed(2)}s`);
+
+      postProgress({
+        stage: 'transcribe',
+        streaming: duration > StreamingDurationThresholdSec,
+      });
+
+      let transcript;
+      if (duration > StreamingDurationThresholdSec) {
+        log(
+          `Using progressive streaming (duration ${duration.toFixed(1)}s > ${StreamingDurationThresholdSec}s)`,
+        );
+        transcript = await transcribeStreaming(pcm);
+      } else {
+        log(`Using one-shot transcription (duration ${duration.toFixed(1)}s)`);
+        transcript = await transcribeOneShot(pcm);
+      }
+
+      port.postMessage({ type: 'result', transcript: transcript || '' });
     } catch (e) {
-      port.postMessage({ error: (e && e.message) || String(e) });
+      port.postMessage({
+        type: 'result',
+        error: (e && e.message) || String(e),
+      });
     }
   });
 }
 
-// Allow SW to explicitly request reconnection
 chrome.runtime.onMessage.addListener(msg => {
   if (msg.type === 'offscreen-reconnect') {
     connect();
   }
 });
 
-// Initial connection
 connect();

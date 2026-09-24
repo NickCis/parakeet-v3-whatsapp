@@ -1,0 +1,35 @@
+{
+  "chrome_extension_name": {
+    "message": "Trascrizione Parakeet per WhatsApp"
+  },
+  "chrome_extension_description": {
+    "message": "Trascrivi i messaggi vocali di WhatsApp in testo in locale con Parakeet (nessuna API key, gira nel browser)."
+  },
+  "transcribe": {
+    "message": "Trascrivi"
+  },
+  "transcribing": {
+    "message": "Trascrizione in corso…"
+  },
+  "downloading_model": {
+    "message": "Download del modello…"
+  },
+  "downloading_model_progress": {
+    "message": "Download del modello… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "error_decode": {
+    "message": "Impossibile decodificare l'audio."
+  },
+  "error_transcribe": {
+    "message": "Trascrizione non riuscita."
+  },
+  "error_loading": {
+    "message": "Il modello è ancora in caricamento. Attendi."
+  }
+}

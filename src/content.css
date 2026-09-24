@@ -13,6 +13,7 @@
 
 .parakeet-wa-transcribe-result {
   width: fit-content;
+  max-width: 100%;
   padding-right: 28px;
   user-select: text;
   position: relative;
@@ -31,6 +32,18 @@
   line-height: 1.25rem;
   font-size: 0.875rem;
   letter-spacing: 0.01rem;
+}
+
+.parakeet-wa-transcribe-result--partial {
+  opacity: 0.92;
+}
+
+.parakeet-wa-transcribe-fixed {
+  color: var(--message-primary);
+}
+
+.parakeet-wa-transcribe-active {
+  color: var(--WDS-content-deemphasized);
 }
 
 .parakeet-wa-transcribe-result-svg {
@@ -73,6 +86,7 @@
 .parakeet-wa-loading-container {
   display: flex;
   align-items: center;
+  margin-bottom: 4px;
 }
 
 .parakeet-wa-loading-container > * + * {

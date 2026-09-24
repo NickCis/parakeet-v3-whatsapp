@@ -1,6 +1,4 @@
 const ParakeetMessageTopic = 'parakeet-message';
-const AudioPlaySelector = 'span[data-icon="audio-play"]';
-const DataIdAttr = 'data-id';
 const LogPrefix = '[Parakeet-WA content]';
 
 function log(...args) {
@@ -17,9 +15,10 @@ function warn(...args) {
 
 log('script loaded');
 
-function getMessage(key) {
+function getMessage(key, substitutions) {
   try {
-    return chrome.i18n.getMessage(key) || key;
+    const msg = chrome.i18n.getMessage(key, substitutions);
+    return msg || key;
   } catch {
     return key;
   }
@@ -68,6 +67,7 @@ async function transcribe(detail) {
   try {
     const reply = await chrome.runtime.sendMessage({
       type: 'transcribe',
+      dataId,
       audioBase64,
     });
     if (reply && reply.error) {
@@ -84,6 +84,41 @@ async function transcribe(detail) {
     });
   }
 }
+
+chrome.runtime.onMessage.addListener(msg => {
+  if (!msg || msg.type !== 'transcribe-progress') return;
+
+  const {
+    dataId,
+    stage,
+    percent,
+    streaming,
+    fixedText,
+    activeText,
+    transcript,
+  } = msg;
+
+  let message;
+  if (stage === 'download') {
+    message =
+      percent != null
+        ? getMessage('downloading_model_progress', [String(percent)])
+        : getMessage('downloading_model');
+  } else {
+    message = getMessage('transcribing');
+  }
+
+  sendMessage('transcribe.progress', {
+    dataId,
+    stage,
+    percent,
+    streaming,
+    fixedText,
+    activeText,
+    transcript,
+    message,
+  });
+});
 
 document.addEventListener(ParakeetMessageTopic, async ev => {
   const detail = ev.detail || {};
